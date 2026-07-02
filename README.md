@@ -8,9 +8,12 @@ impulse is implemented by hand. The hard part — gluing the Separating Axis The
 into a stable game loop so stacks don't jitter or fall through the floor — is the
 whole point of this project.
 
+![Demo](./public/demo.gif)
+
 ![Rigid Body Sandbox](https://img.shields.io/badge/physics-from%20scratch-amber)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
@@ -126,6 +129,13 @@ an "empty" canvas that was actually just the spawn ghost) caught it.
 - No physics libraries. No game framework. Just math.
 
 ---
+
+## Contributing
+
+PRs that improve solver stability, add shapes, or fix subtle glitches are very
+welcome. See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for the architecture
+walkthrough, how to add presets/shapes, solver tuning knobs, and the debug
+overlays to use when something falls through the floor.
 
 ## License
 
