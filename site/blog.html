@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Building a 2D Physics Engine From Scratch — Rigid Body Sandbox</title>
+<meta name="description" content="How I built a rigid-body physics engine with HTML5 Canvas and TypeScript — zero libraries — and the one-character bug that almost shipped." />
+<link rel="icon" href="https://z-cdn.chatglm.cn/z-ai/static/logo.svg" />
+<style>
+  :root {
+    --bg: #0b0e14;
+    --bg-2: #11151f;
+    --card: #161b26;
+    --border: #232a39;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --muted-2: #64748b;
+    --accent: #fbbf24;
+    --accent-2: #fb7185;
+    --cyan: #22d3ee;
+    --green: #34d399;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(11, 14, 20, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0.9rem 1.5rem;
+  }
+  .topbar-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .topbar a.home {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .topbar a.home:hover { color: var(--accent); text-decoration: none; }
+  .topbar .meta {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted-2);
+  }
+
+  article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+
+  article h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    margin-bottom: 0.8rem;
+    background: linear-gradient(180deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  article .lede {
+    font-size: 1.1rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+    font-style: italic;
+    border-left: 3px solid var(--accent);
+    padding-left: 1rem;
+  }
+  article .dateline {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--muted-2);
+    margin-bottom: 2.5rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  article .dateline span::before { content: "·"; margin-right: 0.5rem; color: var(--border); }
+  article .dateline span:first-child::before { content: ""; margin: 0; }
+
+  article h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 2.8rem 0 1rem;
+    color: var(--text);
+  }
+  article h2::before {
+    content: "";
+    display: block;
+    width: 32px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    margin-bottom: 0.8rem;
+    border-radius: 2px;
+  }
+  article h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 1.8rem 0 0.6rem;
+    color: var(--accent);
+  }
+  article p {
+    margin-bottom: 1.2rem;
+    color: #cbd5e1;
+  }
+  article strong { color: var(--text); font-weight: 600; }
+  article em { color: var(--cyan); font-style: italic; }
+  article code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 0.1em 0.35em;
+    border-radius: 0.3em;
+    color: var(--cyan);
+  }
+  article pre {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    padding: 1.1rem 1.3rem;
+    overflow-x: auto;
+    margin: 1.3rem 0;
+    font-family: var(--mono);
+    font-size: 0.83rem;
+    line-height: 1.65;
+  }
+  article pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+  }
+  article pre .c-com { color: var(--muted-2); font-style: italic; }
+  article pre .c-kw { color: var(--accent-2); }
+  article pre .c-fn { color: var(--cyan); }
+  article pre .c-str { color: var(--green); }
+
+  article blockquote {
+    border-left: 3px solid var(--accent);
+    background: rgba(251, 191, 36, 0.06);
+    padding: 1rem 1.3rem;
+    margin: 1.5rem 0;
+    border-radius: 0 0.5rem 0.5rem 0;
+    color: var(--text);
+    font-style: italic;
+  }
+  article blockquote p { margin: 0; color: var(--text); }
+
+  article ul, article ol {
+    margin: 1rem 0 1.3rem 1.4rem;
+    color: #cbd5e1;
+  }
+  article li { margin-bottom: 0.5rem; }
+  article li::marker { color: var(--accent); }
+
+  article hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 3rem 0;
+  }
+
+  .cta-box {
+    margin-top: 3rem;
+    padding: 1.8rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.8rem;
+    text-align: center;
+  }
+  .cta-box p { color: var(--muted); margin-bottom: 1rem; }
+  .cta-box .btns { display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; }
+  .cta-box .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+  }
+  .cta-box .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #1a0f00;
+  }
+  .cta-box .btn-primary:hover { text-decoration: none; transform: translateY(-1px); }
+  .cta-box .btn-ghost {
+    background: var(--bg-2);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .cta-box .btn-ghost:hover { border-color: var(--cyan); text-decoration: none; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    color: var(--muted-2);
+    font-size: 0.82rem;
+    font-family: var(--mono);
+  }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 600px) {
+    article { padding: 2rem 1rem 4rem; }
+    article .lede { font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="topbar-inner">
+    <a class="home" href="../">← Rigid Body Sandbox</a>
+    <span class="meta">blog / building-a-2d-physics-engine</span>
+  </div>
+</nav>
+
+<article>
+  <h1>Building a 2D Physics Engine From Scratch</h1>
+  <p class="lede">And the one-character bug that almost shipped.</p>
+  <div class="dateline">
+    <span>~12 min read</span>
+    <span>HTML5 Canvas + TypeScript</span>
+    <span>Zero libraries</span>
+  </div>
+
+  <h2>The premise</h2>
+  <p>Here's a confession: every time I've used a physics engine — Matter.js, Box2D, p2 — I treated it as a black box. Gravity goes in, bodies fall down, collisions <em>somehow</em> don't explode. It works. I ship. I never understood the <em>how</em>.</p>
+  <p>So I decided to build one. From scratch. No physics libraries, no game framework. Just HTML5 Canvas, raw TypeScript, and the math I half-remembered from university. The goal wasn't to beat Box2D — it was to finally understand what happens between "I called <code>addBody()</code>" and "the box stopped moving."</p>
+  <p>What I learned: the formulas are public knowledge. The <strong>glue</strong> — stitching them into a stable game loop where stacks don't jitter and boxes don't fall through floors — is the actual craft. And it's where everything almost went wrong.</p>
+
+  <h2>The shape of the problem</h2>
+  <p>A 2D rigid-body engine needs to answer four questions, every frame, for every pair of bodies:</p>
+  <ol>
+    <li><strong>Are they touching?</strong> (collision <em>detection</em>)</li>
+    <li><strong>Where exactly, and how deep?</strong> (the <em>manifold</em>)</li>
+    <li><strong>What impulse stops them overlapping?</strong> (collision <em>resolution</em>)</li>
+    <li><strong>How do I keep them from sinking over time?</strong> (position <em>correction</em>)</li>
+  </ol>
+  <p>Everything else — gravity, friction, restitution — is just flavor applied around those four answers.</p>
+  <p>I split the engine into five files, each with one job. The rule: <strong>no React, no DOM, no dependencies in the core.</strong> Pure TypeScript that could run in any runtime.</p>
+  <pre><code><span class="c-com">src/lib/physics/</span>
+├── vector.ts     <span class="c-com">the math primitives</span>
+├── shapes.ts     <span class="c-com">circles + convex polygons</span>
+├── body.ts       <span class="c-com">a single rigid body's state</span>
+├── manifold.ts   <span class="c-com">"are they touching, and where?"</span>
+└── world.ts      <span class="c-com">the game loop + "what impulse fixes it?"</span></code></pre>
+
+  <h2>The math you actually need</h2>
+  <p>Most of "physics" in a 2D engine is surprisingly mundane. You need:</p>
+  <ul>
+    <li><strong>Vectors</strong> — add, subtract, dot product, cross product, rotate.</li>
+    <li><strong>A 2D cross product trick.</strong> In 3D, cross product gives a vector. In 2D, it gives a <em>scalar</em> (<code>ax·by − ay·bx</code>), which is the z-component of the would-be 3D cross. This scalar is the engine's secret weapon: it tells you both the signed area of a parallelogram <em>and</em> the torque from a force at an offset.</li>
+  </ul>
+  <p>That's it. That's the foundation. Everything else builds on these.</p>
+  <p>The one formula people actually remember — <code>F = ma</code> — shows up as integration: each frame, <code>velocity += gravity × dt</code>, then <code>position += velocity × dt</code>. (Euler integration. Not the most accurate, but fine for a sandbox where nothing's going to space.)</p>
+
+  <h2>Collision detection: the Separating Axis Theorem</h2>
+  <p>Here's where it gets interesting. Two convex polygons are <strong>disjoint</strong> if and only if there exists an axis (one of their edge normals) on which their projections don't overlap. That's SAT. Test all candidate axes; if any separates, they don't touch. If none does, the least-overlapping axis is your <strong>collision normal</strong>.</p>
+  <p>SAT tells you <em>that</em> they overlap and <em>by how much</em>. But it doesn't tell you <em>where</em> the contact points are. And for stable stacking — a pyramid of boxes — you need <strong>two</strong> contact points per collision, not one. One point makes stacks wobble and collapse like a house of cards.</p>
+  <p>So after SAT finds the reference face, you do <strong>Sutherland-Hodgman clipping</strong>: take the incident polygon's edge, clip it against the reference face's two side planes, and keep the points that end up penetrating. You get up to two contacts. <em>This</em> is what makes a pyramid stay standing.</p>
+  <p>The whole routine lives in <code>manifold.ts</code>, and it's about 80 lines of the most carefully-written code in the project.</p>
+
+  <h2>Resolution: impulses, not forces</h2>
+  <p>When two bodies overlap, you don't move them apart directly. You apply an <strong>impulse</strong> — an instantaneous change in velocity — along the collision normal, sized to cancel their approaching relative velocity (scaled by restitution for bounciness).</p>
+  <pre><code><span class="c-kw">j</span> = -(1 + e) · (<span class="c-fn">v_rel</span> · <span class="c-fn">n</span>) / (1/mA + 1/mB + ...)</code></pre>
+  <p>The <code>...</code> is the angular contribution: a contact point offset from a body's center of mass creates torque, which creates angular velocity. The full denominator includes <code>rA × n</code> and <code>rB × n</code> terms, squared, scaled by inverse inertia. This is why a box hit on its corner spins, but hit on its face it just moves.</p>
+  <p>Friction is the same idea along the <strong>tangent</strong> (perpendicular to the normal), clamped to a cone: <code>|jt| ≤ μ · j</code>. That's Coulomb's friction model, and it's why a box on a slope either stays put or slides — depending on the angle.</p>
+  <p>I run the whole solver <strong>10 iterations</strong> per frame. More iterations = stiffer stacks, more CPU. Ten is the sweet spot for a sandbox.</p>
+
+  <h2>The bug that almost shipped</h2>
+  <p>Here's where the story turns. I had the engine. I had the renderer. Lint passed. The dev server ran clean. The body counter ticked up when I spawned things. I was about to call it done.</p>
+  <p>Then I opened the browser.</p>
+  <p>The canvas showed a grid. <strong>No boxes.</strong> I'd spawned a pyramid — the counter said 21 bodies — but the canvas was empty. Just the spawn-ghost dashed outline following my cursor.</p>
+  <p>The boxes had <strong>fallen through the floor</strong>. Silently. The body counter still reported them because they still existed in the world — they were just hundreds of pixels below the viewport, accelerating toward infinity.</p>
+
+  <h3>What went wrong</h3>
+  <p>In the Sutherland-Hodgman clipping, I'd written:</p>
+  <pre><code><span class="c-kw">const</span> <span class="c-fn">negSide</span> = -<span class="c-fn">sidePlaneNormal</span>.<span class="c-fn">dot</span>(wv2);  <span class="c-com">// ← WRONG</span></code></pre>
+  <p>It should have been <code>wv1</code>, not <code>wv2</code>. One character. The side-plane clip constant was computed from the wrong vertex, so the clipping plane sat at the wrong offset, so the contact points were discarded, so the manifold came back empty, so the solver never applied an impulse, so gravity won unopposed.</p>
+  <p>And the final depth test had a similar error — it tested against the side constant instead of the face-normal constant. Two transcription mistakes, both in the most mathematically dense 20 lines of the codebase.</p>
+
+  <h3>Why it was invisible</h3>
+  <ul>
+    <li><strong>Lint passed.</strong> It's not a lint error to subtract the wrong variable.</li>
+    <li><strong>TypeScript passed.</strong> Both are <code>Vec2.dot(Vec2): number</code>. Types don't catch logic bugs.</li>
+    <li><strong>The server ran.</strong> No exception, no NaN, no crash. Just wrong numbers.</li>
+    <li><strong>The body counter was misleading.</strong> It counted <em>existing</em> bodies, not <em>visible</em> ones. The bodies existed — they were just off-screen.</li>
+  </ul>
+  <p>The only thing that caught it was <strong>looking at the actual rendered output</strong>. A screenshot revealed an empty canvas that the counter insisted was full.</p>
+
+  <h3>The lesson</h3>
+  <blockquote>
+    <p>"It compiles" is not "it works." "The server runs" is not "the feature works." The only honest definition of <em>done</em> is: <strong>a real user (or a browser acting as one) exercised the thing and saw the expected result.</strong></p>
+  </blockquote>
+  <p>I now treat end-to-end browser verification as mandatory, not optional. A clean build tells you the code is <em>syntactically</em> valid. It tells you nothing about whether it <em>does what you meant</em>.</p>
+
+  <h2>The debug overlays: built for the bug</h2>
+  <p>The most useful feature in the sandbox isn't a feature at all — it's the debug overlays, born directly from the debugging session above:</p>
+  <ul>
+    <li><strong>Contact points</strong> (red dots) — if these vanish mid-stack, your clipping stopped producing contacts. (This is the "boxes falling through floor" signature.)</li>
+    <li><strong>Contact normals</strong> (cyan lines) — should point consistently A→B across a resting stack. If they flicker or point inward, your normal-flip logic is wrong.</li>
+    <li><strong>AABB</strong> (yellow boxes) — sanity check the broad phase.</li>
+    <li><strong>Velocity vectors</strong> (green) — should be near-zero for resting bodies. If they're not, your solver isn't converging.</li>
+  </ul>
+  <p>These aren't polish. They're the instruments you stare at when the math goes wrong. Every physics engine needs them, and I built them <em>because</em> I needed them.</p>
+
+  <h2>What I'd do differently</h2>
+  <p>A few things I'd change if I kept going:</p>
+  <ul>
+    <li><strong>Broad-phase acceleration.</strong> I used brute-force O(n²) AABB pairs, fine for a few hundred bodies. A sweep-and-prune or a uniform grid would scale to thousands.</li>
+    <li><strong>Continuous collision detection.</strong> My solver is discrete — fast-moving bodies can tunnel through thin obstacles. CCD (substepping or swept AABBs) would fix that.</li>
+    <li><strong>A proper constraint solver.</strong> Joints, hinges, ropes — these need a different resolution scheme (sequential impulses with equality constraints, not just contacts). Box2D's solver handles both; mine only does contacts.</li>
+    <li><strong>Warm starting.</strong> Remembering the previous frame's impulses to seed the current frame's solver. Dramatically improves stack stability at fewer iterations.</li>
+  </ul>
+  <p>But that's the point — each of those is a <em>next</em> lesson. The engine as it stands taught me the shape of the problem. And the shape of the bug.</p>
+
+  <h2>The takeaway</h2>
+  <p>Building a physics engine from scratch is the kind of project where the <em>knowledge</em> is free (Wikipedia has every formula) and the <em>understanding</em> costs you a weekend of staring at a screenshot wondering where your boxes went.</p>
+  <p>It's the best kind of hard: the kind where the bug isn't in the part you don't understand, it's in the part you <em>thought</em> you understood. A one-character transcription error in code I'd written myself, in math I could derive on paper.</p>
+  <p>If you've ever used a physics engine as a black box and wondered what's inside — build one. The formulas are waiting. The glue is the craft. And the bug you'll ship will teach you more than the feature you meant to build.</p>
+
+  <hr />
+
+  <div class="cta-box">
+    <p><strong>The full source is on GitHub.</strong> Every vector, every impulse, by hand.</p>
+    <div class="btns">
+      <a class="btn btn-primary" href="https://github.com/erlisgashi67-commits/physics-sandbox">View on GitHub →</a>
+      <a class="btn btn-ghost" href="../">← Back to demo</a>
+    </div>
+  </div>
+</article>
+
+<footer>
+  Rigid Body Sandbox · <a href="https://github.com/erlisgashi67-commits/physics-sandbox">GitHub</a> · MIT License
+</footer>
+
+</body>
+</html>
