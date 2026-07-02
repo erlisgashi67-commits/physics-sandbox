@@ -1,0 +1,52 @@
+name: Deploy Pages site
+
+# Rebuilds the static GitHub Pages site whenever the site/ source changes on
+# main. The site is built by copying site/* into a fresh gh-pages branch and
+# force-pushing — Pages (configured for the gh-pages branch) then serves it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & deploy to gh-pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build site artifact
+        run: |
+          mkdir -p _site
+          # copy the static site source, excluding the source repo's own files
+          cp -r site/* _site/
+          ls -la _site/
+
+      - name: Deploy to gh-pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd _site
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b gh-pages
+          git add -A
+          git commit -q -m "Pages deploy from main @ ${GITHUB_SHA::7}"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force -q origin gh-pages
+          echo "✓ Deployed to gh-pages"
