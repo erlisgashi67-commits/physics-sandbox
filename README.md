@@ -10,7 +10,7 @@ whole point of this project.
 
 ![Demo](./public/demo.gif)
 
-[![Live Demo](https://img.shields.io/badge/🌐_live-erlisgashi67.github.io-cyan)](https://erlisgashi67-commits.github.io/physics-sandbox/)
+[![Live Demo](https://img.shields.io/badge/🌐_live-realphysics.com-cyan)](https://realphysics.com/)
 ![Rigid Body Sandbox](https://img.shields.io/badge/physics-from%20scratch-amber)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
