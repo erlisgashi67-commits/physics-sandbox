@@ -7,19 +7,25 @@
  *   2. sync transforms    — recompute world vertices/normals/AABBs
  *   3. broad phase        — AABB overlap pairs (brute force, fine for <200 bodies)
  *   4. narrow phase       — build manifolds (SAT / circle tests)
- *   5. solve              — `iterations` passes of sequential impulse
- *   6. integrate velocity — position += velocity * dt
- *   7. position correction— Baumgarte stabilization to kill sinking
- *   8. sync again         — so the renderer sees a consistent frame
+ *   5. solve constraints  — `iterations` passes of joint constraint impulses
+ *   6. solve contacts     — `iterations` passes of contact impulses (normal+friction)
+ *   7. integrate velocity — position += velocity * dt
+ *   8. position correction— Baumgarte stabilization for contacts + joints
+ *   9. sync again         — so the renderer sees a consistent frame
  *
  * Kinematic bodies (mouse grab) are driven externally: the caller sets their
  * position + velocity each frame; the solver treats them as infinitely massive
  * so they push dynamic bodies but are never pushed back.
+ *
+ * CCD (continuous collision detection): if any body's per-frame displacement
+ * exceeds a fraction of its size, the whole step is sub-stepped. This prevents
+ * fast projectiles ("bullets") from tunnelling through thin walls.
  */
 
 import { Vec2 } from "./vector";
 import { RigidBody } from "./body";
 import { Manifold, detect } from "./manifold";
+import { Constraint } from "./constraints";
 
 export interface WorldSettings {
   gravity: Vec2;
@@ -29,13 +35,19 @@ export interface WorldSettings {
   angularDamping: number;
   /** max linear speed to avoid explosions on bad solver states */
   maxSpeed: number;
+  /** enable CCD substepping for fast-moving bodies */
+  ccdEnabled: boolean;
+  /** max displacement per substep as a fraction of body radius (CCD) */
+  ccdThreshold: number;
 }
 
 export interface WorldStats {
   bodyCount: number;
   dynamicCount: number;
   contactCount: number;
+  constraintCount: number;
   pairTests: number;
+  substeps: number;
 }
 
 const SLOP = 0.05; // penetration allowance before position correction kicks in
@@ -44,7 +56,10 @@ const CORRECTION_PERCENT = 0.4; // fraction of penetration to correct per step
 export class PhysicsWorld {
   bodies: RigidBody[] = [];
   manifolds: Manifold[] = [];
+  constraints: Constraint[] = [];
   settings: WorldSettings;
+  /** read by the renderer: how many substeps ran this `step()` */
+  lastSubsteps = 1;
 
   constructor(settings?: Partial<WorldSettings>) {
     this.settings = {
@@ -53,6 +68,8 @@ export class PhysicsWorld {
       linearDamping: 0.4, // applied as pow(damping, dt) -> very mild
       angularDamping: 0.4,
       maxSpeed: 4000,
+      ccdEnabled: true,
+      ccdThreshold: 0.5,
       ...settings,
     };
   }
@@ -62,19 +79,33 @@ export class PhysicsWorld {
     return body;
   }
 
+  addConstraint(c: Constraint): Constraint {
+    this.constraints.push(c);
+    return c;
+  }
+
   remove(body: RigidBody): void {
     const i = this.bodies.indexOf(body);
     if (i >= 0) this.bodies.splice(i, 1);
+    // also drop any constraints referencing it
+    this.constraints = this.constraints.filter((c) => c.bodyA !== body && c.bodyB !== body);
+  }
+
+  removeConstraint(c: Constraint): void {
+    const i = this.constraints.indexOf(c);
+    if (i >= 0) this.constraints.splice(i, 1);
   }
 
   clear(): void {
     this.bodies = [];
     this.manifolds = [];
+    this.constraints = [];
   }
 
   clearDynamic(): void {
     this.bodies = this.bodies.filter((b) => b.isStatic);
     this.manifolds = [];
+    this.constraints = this.constraints.filter((c) => c.bodyA.isStatic && (c.bodyB == null || c.bodyB.isStatic));
   }
 
   /** live-update gravity (vertical component) */
@@ -101,61 +132,36 @@ export class PhysicsWorld {
   step(dt: number): WorldStats {
     const s = this.settings;
 
-    // 1. integrate forces -> velocity (gravity + damping)
-    for (const b of this.bodies) {
-      if (b.isStatic || b.kinematic) continue;
-      b.velocity.iaddMul(s.gravity, dt);
-      // accumulated force (user-applied this frame)
-      b.velocity.iaddMul(b.force, b.invMass * dt);
-      b.angularVelocity += b.torque * b.invInertia * dt;
-      b.force.set(0, 0);
-      b.torque = 0;
-
-      // mild damping (frame-rate independent-ish)
-      const ld = Math.pow(s.linearDamping, dt);
-      const ad = Math.pow(s.angularDamping, dt);
-      b.velocity.imul(ld);
-      b.angularVelocity *= ad;
-
-      // clamp runaway velocities
-      const sp2 = b.velocity.lenSq();
-      if (sp2 > s.maxSpeed * s.maxSpeed) {
-        b.velocity.imul(s.maxSpeed / Math.sqrt(sp2));
+    // --- determine substep count for CCD ---
+    // if any body moves more than ccdThreshold * itsSize in one step, subdivide
+    let substeps = 1;
+    if (s.ccdEnabled) {
+      let maxRatio = 0;
+      for (const b of this.bodies) {
+        if (b.isStatic || b.kinematic) continue;
+        const size =
+          b.shape.kind === "circle"
+            ? (b.shape as { radius: number }).radius
+            : Math.min(b.shape.halfExtents.x, b.shape.halfExtents.y) * 2;
+        const disp = b.velocity.len() * dt;
+        if (size > 0) {
+          const ratio = disp / size;
+          if (ratio > maxRatio) maxRatio = ratio;
+        }
+      }
+      if (maxRatio > s.ccdThreshold) {
+        substeps = Math.min(8, Math.ceil(maxRatio / s.ccdThreshold));
       }
     }
+    this.lastSubsteps = substeps;
+    const h = dt / substeps;
 
-    // 2. sync transforms
-    for (const b of this.bodies) b.sync();
-
-    // 3. broad phase (AABB pairs)
-    const pairs = this.broadphase();
-
-    // 4. narrow phase
-    this.manifolds.length = 0;
-    for (const [a, b] of pairs) {
-      const m = detect(a, b);
-      if (m) this.manifolds.push(m);
+    let totalPairs = 0;
+    for (let sub = 0; sub < substeps; sub++) {
+      totalPairs = this.substep(h);
     }
 
-    // 5. solve (sequential impulse)
-    for (let iter = 0; iter < s.iterations; iter++) {
-      for (const m of this.manifolds) this.resolve(m);
-    }
-
-    // 6. integrate velocity -> position
-    for (const b of this.bodies) {
-      if (b.isStatic || b.kinematic) continue;
-      b.position.iaddMul(b.velocity, dt);
-      b.angle += b.angularVelocity * dt;
-    }
-
-    // 7. position correction (Baumgarte)
-    for (const m of this.manifolds) this.positionalCorrection(m);
-
-    // 8. final sync so renderer + next frame start consistent
-    for (const b of this.bodies) b.sync();
-
-    // NaN guard — if something blew up, freeze that body rather than the world
+    // final NaN guard
     for (const b of this.bodies) {
       if (
         Number.isNaN(b.position.x) ||
@@ -172,8 +178,72 @@ export class PhysicsWorld {
       bodyCount: this.bodies.length,
       dynamicCount: this.bodies.filter((b) => !b.isStatic).length,
       contactCount: this.manifolds.length,
-      pairTests: pairs.length,
+      constraintCount: this.constraints.length,
+      pairTests: totalPairs,
+      substeps,
     };
+  }
+
+  private substep(dt: number): number {
+    const s = this.settings;
+
+    // 1. integrate forces -> velocity (gravity + damping)
+    for (const b of this.bodies) {
+      if (b.isStatic || b.kinematic) continue;
+      b.velocity.iaddMul(s.gravity, dt);
+      b.velocity.iaddMul(b.force, b.invMass * dt);
+      b.angularVelocity += b.torque * b.invInertia * dt;
+      b.force.set(0, 0);
+      b.torque = 0;
+
+      const ld = Math.pow(s.linearDamping, dt);
+      const ad = Math.pow(s.angularDamping, dt);
+      b.velocity.imul(ld);
+      b.angularVelocity *= ad;
+
+      const sp2 = b.velocity.lenSq();
+      if (sp2 > s.maxSpeed * s.maxSpeed) {
+        b.velocity.imul(s.maxSpeed / Math.sqrt(sp2));
+      }
+    }
+
+    // 2. sync transforms
+    for (const b of this.bodies) b.sync();
+
+    // 3. broad phase
+    const pairs = this.broadphase();
+
+    // 4. narrow phase
+    this.manifolds.length = 0;
+    for (const [a, b] of pairs) {
+      const m = detect(a, b);
+      if (m) this.manifolds.push(m);
+    }
+
+    // 5. prepare + solve constraints (joints first, then contacts, interleaved)
+    for (const c of this.constraints) c.prepare(dt);
+
+    for (let iter = 0; iter < s.iterations; iter++) {
+      // joints before contacts each iteration (keeps welded structures rigid)
+      for (const c of this.constraints) c.solveVelocity();
+      for (const m of this.manifolds) this.resolve(m);
+    }
+
+    // 6. integrate velocity -> position
+    for (const b of this.bodies) {
+      if (b.isStatic || b.kinematic) continue;
+      b.position.iaddMul(b.velocity, dt);
+      b.angle += b.angularVelocity * dt;
+    }
+
+    // 7. position correction (contacts + joints)
+    for (const c of this.constraints) c.solvePosition();
+    for (const m of this.manifolds) this.positionalCorrection(m);
+
+    // 8. final sync
+    for (const b of this.bodies) b.sync();
+
+    return pairs.length;
   }
 
   // -------------------------------------------------------------------

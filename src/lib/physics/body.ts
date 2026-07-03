@@ -190,6 +190,16 @@ export class RigidBody {
     return this.kinematic ? 0 : this.invInertia;
   }
 
+  /** world-space position of a local-space point on this body */
+  worldPoint(local: Vec2): Vec2 {
+    const c = Math.cos(this.angle);
+    const s = Math.sin(this.angle);
+    return new Vec2(
+      local.x * c - local.y * s + this.position.x,
+      local.x * s + local.y * c + this.position.y,
+    );
+  }
+
   containsPoint(p: Vec2): boolean {
     if (this.shape.kind === "circle") {
       const r = (this.shape as CircleShape).radius;

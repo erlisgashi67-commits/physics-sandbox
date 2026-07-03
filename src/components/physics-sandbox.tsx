@@ -29,7 +29,9 @@ import {
 import {
   buildWalls,
   createBody,
+  presetChain,
   presetDominoes,
+  presetPendulum,
   presetPyramid,
   presetRain,
   presetSeesaw,
@@ -69,6 +71,8 @@ const COLORS: RenderColors = {
   broadphase: "rgba(168,85,247,0.25)",
   text: "#e2e8f0",
   textMuted: "#94a3b8",
+  joint: "#c084fc",
+  jointAnchor: "#fef08a",
 };
 
 interface SandboxSettings {
@@ -113,6 +117,8 @@ const PRESETS: { value: PresetName; label: string }[] = [
   { value: "pyramid", label: "Pyramid" },
   { value: "dominoes", label: "Dominoes" },
   { value: "seesaw", label: "Seesaw" },
+  { value: "chain", label: "Chain" },
+  { value: "pendulum", label: "Joints" },
   { value: "rain", label: "Rain" },
 ];
 
@@ -121,6 +127,8 @@ interface LiveStats {
   bodies: number;
   contacts: number;
   pairs: number;
+  joints: number;
+  substeps: number;
 }
 
 export interface PhysicsSandboxHandle {
@@ -144,6 +152,8 @@ export default function PhysicsSandbox() {
     bodies: 0,
     contacts: 0,
     pairs: 0,
+    joints: 0,
+    substeps: 1,
   });
 
   // pointer / grab state (refs — no re-render needed)
@@ -272,6 +282,12 @@ export default function PhysicsSandbox() {
         break;
       case "seesaw":
         presetSeesaw(world, w, h, mat);
+        break;
+      case "chain":
+        presetChain(world, w, h, mat);
+        break;
+      case "pendulum":
+        presetPendulum(world, w, h, mat);
         break;
       case "rain":
         presetRain(world, w, h, mat);
@@ -475,6 +491,8 @@ export default function PhysicsSandbox() {
           bodies: world.bodies.filter((b) => !b.isStatic).length,
           contacts: world.manifolds.length,
           pairs: broadphasePairs.length || computeBroadphasePairs(world).length,
+          joints: world.constraints.length,
+          substeps: world.lastSubsteps,
         });
       }
     };
@@ -520,6 +538,8 @@ export default function PhysicsSandbox() {
             <StatBadge icon={<Activity className="size-3" />} label="FPS" value={stats.fps} />
             <StatBadge label="Bodies" value={stats.bodies} />
             <StatBadge label="Contacts" value={stats.contacts} />
+            {stats.joints > 0 && <StatBadge label="Joints" value={stats.joints} />}
+            {stats.substeps > 1 && <StatBadge label="CCD" value={stats.substeps} />}
             {settings.debug.showBroadphase && (
               <StatBadge label="Pairs" value={stats.pairs} />
             )}

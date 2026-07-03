@@ -11,6 +11,13 @@ import { PhysicsWorld } from "@/lib/physics/world";
 import { RigidBody } from "@/lib/physics/body";
 import { CircleShape, PolygonShape } from "@/lib/physics/shapes";
 import { Manifold } from "@/lib/physics/manifold";
+import {
+  Constraint,
+  DistanceJoint,
+  PinJoint,
+  WeldJoint,
+  MotorJoint,
+} from "@/lib/physics/constraints";
 
 export interface RenderColors {
   background: string;
@@ -27,6 +34,8 @@ export interface RenderColors {
   broadphase: string;
   text: string;
   textMuted: string;
+  joint: string;
+  jointAnchor: string;
 }
 
 export interface DebugOptions {
@@ -108,6 +117,9 @@ export function renderWorld(
   for (const body of world.bodies) {
     drawBody(ctx, body, opts);
   }
+
+  // constraints (drawn on top of bodies so joints are visible)
+  drawConstraints(ctx, world, opts);
 
   // ghost (spawn preview)
   if (opts.ghost) drawGhost(ctx, opts.ghost);
@@ -217,6 +229,108 @@ function drawBody(
     );
     ctx.stroke();
   }
+}
+
+function drawConstraints(
+  ctx: CanvasRenderingContext2D,
+  world: PhysicsWorld,
+  opts: RenderOptions,
+): void {
+  const color = opts.colors.joint;
+  const anchorColor = opts.colors.jointAnchor;
+  ctx.save();
+  ctx.lineWidth = 2;
+
+  for (const c of world.constraints) {
+    if (c instanceof DistanceJoint) {
+      const pA = c.bodyA.worldPoint(c.localA);
+      const pB = c.bodyB.worldPoint(c.localB);
+      // dashed rod
+      ctx.strokeStyle = color;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawAnchor(ctx, pA, anchorColor);
+      drawAnchor(ctx, pB, anchorColor);
+    } else if (c instanceof PinJoint) {
+      const pA = c.bodyA.worldPoint(c.localA);
+      const pB = c.bodyB.worldPoint(c.localB);
+      const mid = pA.add(pB).mul(0.5);
+      // hinge: small circle at the pivot
+      ctx.strokeStyle = color;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(mid.x, mid.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = anchorColor;
+      ctx.beginPath();
+      ctx.arc(mid.x, mid.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // thin lines to each body's anchor
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (c instanceof WeldJoint) {
+      const pA = c.bodyA.worldPoint(c.localA);
+      const pB = c.bodyB.worldPoint(c.localB);
+      const mid = pA.add(pB).mul(0.5);
+      // weld: filled square at the joint
+      ctx.fillStyle = color;
+      ctx.strokeStyle = anchorColor;
+      ctx.setLineDash([]);
+      ctx.save();
+      ctx.translate(mid.x, mid.y);
+      ctx.rotate((c.bodyA.angle + c.bodyB.angle) / 2);
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.strokeRect(-4, -4, 8, 8);
+      ctx.restore();
+    } else if (c instanceof MotorJoint) {
+      // motor: arc between the two bodies' centers
+      const pA = c.bodyA.position;
+      const pB = c.bodyB.position;
+      ctx.strokeStyle = color;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // arrow showing target direction
+      const angErr = c.targetAngle - (c.bodyB.angle - c.bodyA.angle);
+      ctx.strokeStyle = anchorColor;
+      ctx.beginPath();
+      ctx.arc(pB.x, pB.y, 10, c.bodyB.angle, c.bodyB.angle + angErr, angErr < 0);
+      ctx.stroke();
+    } else {
+      // generic constraint fallback
+      const a = c.bodyA;
+      const b = c.bodyB;
+      if (b) {
+        ctx.strokeStyle = color;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(a.position.x, a.position.y);
+        ctx.lineTo(b.position.x, b.position.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+function drawAnchor(ctx: CanvasRenderingContext2D, p: Vec2, color: string): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawGhost(ctx: CanvasRenderingContext2D, ghost: GhostShape): void {

@@ -11,6 +11,12 @@ import {
   makeRegularPolygon,
 } from "@/lib/physics/shapes";
 import { PhysicsWorld } from "@/lib/physics/world";
+import {
+  DistanceJoint,
+  PinJoint,
+  WeldJoint,
+  MotorJoint,
+} from "@/lib/physics/constraints";
 import type { SandboxShapeKind } from "@/components/physics/canvas-renderer";
 
 const PALETTE = [
@@ -238,4 +244,131 @@ export function presetRain(
   }
 }
 
-export type PresetName = "stack" | "pyramid" | "dominoes" | "seesaw" | "rain";
+// ---------------------------------------------------------------------------
+// joint presets — showcase the new constraint solver
+// ---------------------------------------------------------------------------
+
+/** a chain of boxes hanging from the ceiling by distance joints */
+export function presetChain(
+  world: PhysicsWorld,
+  w: number,
+  h: number,
+  material: MaterialSettings,
+): void {
+  const cx = w / 2;
+  const linkW = 16;
+  const linkH = 26;
+  const count = 8;
+  // static ceiling anchor
+  const anchor = new RigidBody(makeBox(40, 14), new Vec2(cx, 60), {
+    isStatic: true,
+    color: "#334155",
+  });
+  world.add(anchor);
+  let prev: RigidBody = anchor;
+  for (let i = 0; i < count; i++) {
+    const link = new RigidBody(makeBox(linkW, linkH), new Vec2(cx, 80 + i * (linkH + 4)), {
+      density: 0.04,
+      restitution: material.restitution,
+      staticFriction: Math.min(material.friction * 1.3, 1),
+      dynamicFriction: material.friction,
+      color: nextColor(),
+    });
+    world.add(link);
+    // distance joint from prev bottom to this top — a flexible rope
+    const pA = prev.worldPoint(new Vec2(0, prev.isStatic ? 7 : linkH / 2));
+    const pB = link.worldPoint(new Vec2(0, -linkH / 2));
+    world.addConstraint(new DistanceJoint(prev, link, pA, pB, { length: 6 }));
+    prev = link;
+  }
+  // a heavy ball at the end to swing the chain
+  const ball = createBody("circle", 24, cx, 80 + count * (linkH + 4) + 20, {
+    ...material,
+    density: 0.1,
+  });
+  world.add(ball);
+  const pA = prev.worldPoint(new Vec2(0, linkH / 2));
+  const pB = ball.worldPoint(new Vec2(0, 0));
+  world.addConstraint(new DistanceJoint(prev, ball, pA, pB, { length: 8 }));
+}
+
+/** a pendulum + a welded "rigid bar" structure to contrast joint types */
+export function presetPendulum(
+  world: PhysicsWorld,
+  w: number,
+  h: number,
+  material: MaterialSettings,
+): void {
+  const cx = w / 2;
+  // static pivot
+  const pivot = new RigidBody(makeBox(30, 14), new Vec2(cx, 70), {
+    isStatic: true,
+    color: "#334155",
+  });
+  world.add(pivot);
+  // long rod hanging from the pivot via a pin (hinge) joint
+  const rodLen = 220;
+  const rod = new RigidBody(makeBox(16, rodLen), new Vec2(cx, 70 + rodLen / 2 + 4), {
+    density: 0.03,
+    restitution: material.restitution,
+    staticFriction: Math.min(material.friction * 1.3, 1),
+    dynamicFriction: material.friction,
+    color: nextColor(),
+  });
+  world.add(rod);
+  // pin joint at the top — allows rotation
+  const hingePoint = rod.worldPoint(new Vec2(0, -rodLen / 2));
+  world.addConstraint(new PinJoint(pivot, rod, hingePoint));
+  // give it a nudge
+  rod.angularVelocity = 1.2;
+
+  // welded structure to the right: two boxes fused into one rigid body
+  const wx = cx + 200;
+  const wy = h - 80;
+  const base = new RigidBody(makeBox(80, 40), new Vec2(wx, wy), {
+    density: 0.04,
+    restitution: material.restitution,
+    staticFriction: Math.min(material.friction * 1.3, 1),
+    dynamicFriction: material.friction,
+    color: nextColor(),
+  });
+  const top = new RigidBody(makeBox(40, 50), new Vec2(wx, wy - 45), {
+    density: 0.04,
+    restitution: material.restitution,
+    staticFriction: Math.min(material.friction * 1.3, 1),
+    dynamicFriction: material.friction,
+    color: nextColor(),
+  });
+  world.add(base, top);
+  // weld at the contact — locks them rigid
+  world.addConstraint(new WeldJoint(base, top, new Vec2(wx, wy - 20)));
+
+  // a motorized "spinner" to the left: static body + driven rotating arm
+  const mx = cx - 200;
+  const my = h - 100;
+  const motorBase = new RigidBody(makeBox(30, 30), new Vec2(mx, my), {
+    isStatic: true,
+    color: "#334155",
+  });
+  const arm = new RigidBody(makeBox(120, 16), new Vec2(mx, my), {
+    density: 0.03,
+    restitution: material.restitution,
+    staticFriction: Math.min(material.friction * 1.3, 1),
+    dynamicFriction: material.friction,
+    color: nextColor(),
+  });
+  world.add(motorBase, arm);
+  // motor drives the arm to spin
+  world.addConstraint(
+    new MotorJoint(motorBase, arm, { targetAngle: Math.PI * 2, maxForce: 200 }),
+  );
+}
+
+export type PresetName =
+  | "stack"
+  | "pyramid"
+  | "dominoes"
+  | "seesaw"
+  | "rain"
+  | "chain"
+  | "pendulum";
