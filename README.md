@@ -36,16 +36,30 @@ whole point of this project.
   - Circle ↔ Polygon (Voronoi face/vertex region test)
   - **Polygon ↔ Polygon — full SAT + Sutherland-Hodgman contact clipping**,
     producing up to 2 contact points per manifold.
+- **`constraints.ts`** — sequential-impulse constraint solver with 4 joint types:
+  - **DistanceJoint** — keeps two anchors a fixed distance apart (rods/ropes).
+    Supports soft constraints via Catto's frequency/damping model.
+  - **PinJoint** (hinge) — keeps two anchors coincident; allows free rotation
+    around the pivot. Uses a 2×2 effective mass matrix.
+  - **WeldJoint** — locks two bodies together (position + angle). Combines a
+    pin joint with an angular constraint.
+  - **MotorJoint** — drives the relative angle toward a target (a servo).
+    Keeps the linear offset + applies clamped angular correction.
+  - Warm starting + Baumgarte position correction per joint.
 - **`world.ts`** — fixed-timestep simulation pipeline:
   1. integrate forces (gravity + accumulated forces → velocity)
   2. sync transforms (recompute world verts/normals/AABBs)
   3. broad phase (AABB overlap pairs, O(n²))
   4. narrow phase (build manifolds)
-  5. **sequential impulse solver** — N iterations of normal impulse
-     (restitution) + tangential impulse (Coulomb friction cone)
-  6. integrate velocity → position
-  7. **Baumgarte position correction** to kill sinking
-  8. NaN guard for solver blow-ups
+  5. **solve constraints** — N iterations, joints before contacts each pass
+  6. **solve contacts** — normal impulse (restitution) + tangential (Coulomb
+     friction cone)
+  7. integrate velocity → position
+  8. **Baumgarte position correction** for contacts + joints
+  9. NaN guard for solver blow-ups
+- **CCD (continuous collision detection)** — if any body's per-frame
+  displacement exceeds a fraction of its size, the whole step is sub-stepped
+  (up to 8×). Prevents fast projectiles from tunnelling through thin walls.
 
 ### Interactive sandbox (`src/components/`)
 - DPR-aware canvas renderer with a stable accumulator game loop
@@ -53,7 +67,9 @@ whole point of this project.
   inherit the cursor's velocity on release
 - Click empty space to **spawn**, right-click to **delete**
 - Live sliders: gravity, restitution, friction, time-scale, spawn size
-- 5 presets: **Stack, Pyramid, Dominoes, Seesaw, Rain**
+- 7 presets: **Stack, Pyramid, Dominoes, Seesaw, Chain, Joints, Rain**
+  - *Chain* — a hanging chain of boxes linked by distance joints
+  - *Joints* — a pendulum (pin) + welded structure (weld) + motorized spinner (motor)
 - **Debug overlays** (the things you stare at when it glitches):
   - AABB (broad-phase bounds)
   - Velocity vectors
@@ -62,7 +78,26 @@ whole point of this project.
   - Broadphase pairs (purple lines)
   - Grid
 - Keyboard shortcuts: `Space` pause, `1`–`5` pick shape, `R`/`C` clear
-- Throttled HUD: FPS, body count, contact count, pair count
+- Throttled HUD: FPS, body count, contact count, joint count, CCD substeps
+
+### Siege — a demolition game on top of the engine (`src/components/siege-game.*`)
+
+![Siege](./public/siege.png)
+
+A slingshot demolition game that exercises every engine feature — joints, CCD,
+and the impulse solver together:
+
+- **Slingshot mechanic** — drag back to aim, trajectory preview arc, release
+  to fire with power proportional to pull distance
+- **CCD projectiles** — fast shots don't tunnel through structures
+- **Jointed structures** — welds, pins, distance joints, and a motor all
+  appear across the levels
+- **3 levels**: *Stack Attack* (knock targets off towers), *Welded Keep* (a
+  welded fortress + a target hanging from a soft distance-joint chain),
+  *Pendulum Gauntlet* (time your shot past a hinged swinging pendulum + a
+  pin-jointed seesaw)
+- **Win/lose + scoring** — knock all targets below the dotted line to win;
+  500/target + 1000 win bonus + 500/remaining shot
 
 ---
 
@@ -80,8 +115,9 @@ bun run lint
 ```
 
 Open the app, try the **Pyramid** preset, then grab a box out of the middle and
-fling it — the stack stays stable. Or crank **Restitution** to `1.0` and drop
-circles to watch them bounce.
+fling it — the stack stays stable. Or switch to the **Joints** preset to see a
+pendulum, a welded structure, and a motorized spinner running off the constraint
+solver. Or flip the mode switch to **Siege** and play the demolition game.
 
 ---
 
@@ -103,6 +139,27 @@ For each contact, the solver computes a normal impulse that cancels the
 approaching relative velocity (scaled by restitution), plus a tangential impulse
 clamped to the friction cone `|jt| ≤ μ · j`. Multiple solver iterations per step
 converge to a consistent solution for stacks.
+
+### Constraints (joints)
+
+A constraint is an equation `C(state) = 0` that the solver drives toward zero
+each step by applying impulses — the same framework Box2D uses (Erin Catto /
+Randy Gaul), hand-rolled here. Each joint implements `prepare()` (compute the
+Jacobian / effective mass), `solveVelocity()` (apply the corrective impulse,
+called N times per step), and `solvePosition()` (project positions back toward
+`C = 0`). Warm starting seeds each step with the previous frame's impulse for
+faster convergence. Joints are solved *before* contacts each iteration so welded
+structures stay rigid.
+
+### CCD (continuous collision detection)
+
+Discrete collision detection samples the world at fixed timesteps. A fast
+projectile moving farther than its own size in one step can step cleanly through
+a thin wall without ever overlapping it — "tunnelling." The CCD layer measures
+each body's per-frame displacement against its size; if it exceeds a threshold
+(`0.5×` the smallest dimension), the whole step is subdivided into substeps (up
+to 8). This is what makes the Siege slingshot work — a high-power shot would
+otherwise pass straight through the towers.
 
 ### Baumgarte position correction
 

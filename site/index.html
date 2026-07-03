@@ -315,24 +315,24 @@
       <p>Sequential impulses with restitution + Coulomb friction cones. <code>N</code> iterations per step converge to a consistent solution for resting stacks.</p>
     </div>
     <div class="card">
+      <div class="ico" style="background:rgba(192,132,252,0.12);color:#c084fc">🔗</div>
+      <h3>Joints &amp; Constraints</h3>
+      <p>A full constraint solver with <code>distance</code>, <code>pin</code> (hinge), <code>weld</code>, and <code>motor</code> joints. Warm starting + Baumgarte position correction — the same framework Box2D uses.</p>
+    </div>
+    <div class="card">
       <div class="ico" style="background:rgba(34,211,238,0.12);color:var(--cyan)">🎯</div>
-      <h3>Baumgarte Correction</h3>
-      <p>Position correction kills the slow sinking that floating-point drift causes — without adding energy. Slop of <code>0.05px</code> prevents jitter.</p>
+      <h3>CCD Substepping</h3>
+      <p>Continuous collision detection substeps fast-moving bodies (up to <code>8×</code>) so projectiles don't tunnel through thin walls. No more "the bullet skipped the floor."</p>
     </div>
     <div class="card">
       <div class="ico" style="background:rgba(52,211,153,0.12);color:var(--green)">🎮</div>
       <h3>Interactive Sandbox</h3>
-      <p>Mouse grab &amp; throw (kinematic bodies), spawn-on-click, right-click delete, live sliders, and 5 preset scenes including dominoes &amp; a seesaw.</p>
+      <p>Mouse grab &amp; throw, spawn-on-click, right-click delete, live sliders, and 7 presets — including a hanging chain and a motorized spinner.</p>
     </div>
     <div class="card">
-      <div class="ico" style="background:rgba(168,85,247,0.12);color:#a855f7">🔍</div>
-      <h3>Debug Overlays</h3>
-      <p>AABB bounds, velocity vectors, contact points &amp; normals, broadphase pairs — the exact things you stare at when something glitches.</p>
-    </div>
-    <div class="card">
-      <div class="ico" style="background:rgba(251,191,36,0.12);color:var(--accent)">📦</div>
-      <h3>React-Free Core</h3>
-      <p>The physics lives in pure TypeScript with no DOM access — portable to any runtime. React + Canvas only wrap it for the UI.</p>
+      <div class="ico" style="background:rgba(251,191,36,0.12);color:var(--accent)">🏗️</div>
+      <h3>Siege Game</h3>
+      <p>A slingshot demolition game on top of the engine — 3 levels with welded fortresses, hanging chains, and pendulum obstacles. Every feature, working together.</p>
     </div>
   </div>
 </section>
@@ -374,6 +374,26 @@
     The math was public knowledge. The transcription error wasn't.<br>
     <a href="https://github.com/erlisgashi67-commits/physics-sandbox/blob/main/src/lib/physics/manifold.ts">Read the full implementation →</a>
   </p>
+</section>
+
+<section style="border-top:1px solid var(--border);text-align:center;">
+  <div class="section-head">
+    <h2>Or just play the game</h2>
+    <p>The engine isn't just a tech demo — there's a demolition game built on top of it.</p>
+  </div>
+  <div class="demo-frame" style="max-width:880px;margin-bottom:1.5rem;">
+    <img src="siege.png" alt="Siege game: a slingshot projectile mid-flight toward a tower of boxes with a glowing green target" />
+  </div>
+  <p style="color:var(--muted);max-width:560px;margin:0 auto 1.5rem;font-size:0.92rem;">
+    <strong style="color:var(--text);">Siege</strong> — drag the slingshot back, release to fire.
+    Knock the glowing targets off their structures to win. Fast projectiles use CCD so they
+    don't tunnel through walls; the structures use welds, pins, distance joints, and a motor.
+    Three levels, scoring, the works.
+  </p>
+  <a class="btn btn-primary" href="https://github.com/erlisgashi67-commits/physics-sandbox">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.1 0 4.6-2.8 5.7-5.5 6 .5.4.9 1 .9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+    Play it on GitHub
+  </a>
 </section>
 
 <section style="border-top:1px solid var(--border);text-align:center;">
