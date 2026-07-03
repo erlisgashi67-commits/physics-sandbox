@@ -240,5 +240,5 @@ bug you'll ship will teach you more than the feature you meant to build.
 ---
 
 *The full source is on [GitHub](https://github.com/erlisgashi67-commits/physics-sandbox),
-and there's a live demo at [realphysics.com](https://realphysics.com/).
+and there's a live demo at [erlisgashi67-commits.github.io/physics-sandbox](https://erlisgashi67-commits.github.io/physics-sandbox/).
 Every vector, every impulse, by hand.*
