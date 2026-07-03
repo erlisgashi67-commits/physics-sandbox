@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rigid Body Sandbox — Custom 2D Physics Engine</title>
+<meta name="description" content="A from-scratch 2D rigid-body physics engine built with HTML5 Canvas and TypeScript. SAT collision detection, impulse-based resolution, friction, restitution — zero physics libraries." />
+<link rel="icon" href="https://z-cdn.chatglm.cn/z-ai/static/logo.svg" />
+<style>
+  :root {
+    --bg: #0b0e14;
+    --bg-2: #11151f;
+    --card: #161b26;
+    --border: #232a39;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #fbbf24;
+    --accent-2: #fb7185;
+    --cyan: #22d3ee;
+    --green: #34d399;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .hero {
+    position: relative;
+    padding: 5rem 1.5rem 4rem;
+    text-align: center;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: -40% -10% auto -10%;
+    height: 600px;
+    background:
+      radial-gradient(ellipse 600px 300px at 30% 20%, rgba(251, 191, 36, 0.12), transparent 60%),
+      radial-gradient(ellipse 500px 280px at 75% 30%, rgba(251, 113, 133, 0.10), transparent 60%),
+      radial-gradient(ellipse 400px 240px at 50% 60%, rgba(34, 211, 238, 0.08), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .hero > * { position: relative; z-index: 1; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    margin-bottom: 1.5rem;
+  }
+  .badge::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+  h1 {
+    font-size: clamp(2.2rem, 6vw, 3.8rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .tagline {
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    color: var(--muted);
+    max-width: 640px;
+    margin: 0 auto 2.2rem;
+  }
+  .cta-row {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 3rem;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: 0.6rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #1a0f00;
+    box-shadow: 0 8px 24px -8px rgba(251, 113, 133, 0.5);
+  }
+  .btn-primary:hover { transform: translateY(-2px); text-decoration: none; box-shadow: 0 12px 28px -8px rgba(251, 113, 133, 0.6); }
+  .btn-ghost {
+    background: var(--card);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--cyan); text-decoration: none; }
+
+  .demo-frame {
+    max-width: 980px;
+    margin: 0 auto;
+    border-radius: 0.8rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02);
+    background: var(--bg-2);
+  }
+  .demo-frame img { width: 100%; display: block; }
+
+  .stats {
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
+    flex-wrap: wrap;
+    padding: 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-2);
+  }
+  .stat { text-align: center; }
+  .stat .num {
+    font-family: var(--mono);
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .stat .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  section { padding: 4.5rem 1.5rem; max-width: 1080px; margin: 0 auto; }
+  .section-head { text-align: center; margin-bottom: 3rem; }
+  .section-head h2 {
+    font-size: clamp(1.6rem, 3.5vw, 2.3rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.6rem;
+  }
+  .section-head p { color: var(--muted); max-width: 560px; margin: 0 auto; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.2rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    padding: 1.6rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .card .ico {
+    width: 38px; height: 38px;
+    border-radius: 0.5rem;
+    display: grid; place-items: center;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+  }
+  .card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; font-weight: 600; }
+  .card p { color: var(--muted); font-size: 0.9rem; line-height: 1.55; }
+  .card code { font-family: var(--mono); font-size: 0.82rem; color: var(--cyan); }
+
+  .pipeline {
+    max-width: 760px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .pipeline::before {
+    content: "";
+    position: absolute;
+    left: 19px;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-2), var(--cyan));
+    opacity: 0.4;
+  }
+  .step {
+    display: flex;
+    gap: 1.2rem;
+    padding: 0.9rem 0;
+    position: relative;
+  }
+  .step .dot {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 2px solid var(--accent);
+    display: grid; place-items: center;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--accent);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .step .body h4 { font-size: 0.95rem; margin-bottom: 0.2rem; }
+  .step .body p { color: var(--muted); font-size: 0.88rem; }
+  .step .body code { font-family: var(--mono); color: var(--cyan); font-size: 0.82rem; }
+
+  .codeblock {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.7rem;
+    padding: 1.4rem 1.6rem;
+    font-family: var(--mono);
+    font-size: 0.84rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+  .codeblock .c-kw { color: var(--accent-2); }
+  .codeblock .c-fn { color: var(--cyan); }
+  .codeblock .c-str { color: var(--green); }
+  .codeblock .c-com { color: #64748b; font-style: italic; }
+  .codeblock .c-num { color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--text); }
+
+  @media (max-width: 600px) {
+    .hero { padding: 3rem 1rem 2.5rem; }
+    section { padding: 3rem 1rem; }
+    .stats { gap: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="badge">Zero physics libraries · Built from scratch</span>
+  <h1>Rigid Body <span class="grad">Sandbox</span></h1>
+  <p class="tagline">
+    A custom 2D physics engine — SAT collision detection, impulse-based
+    resolution, friction &amp; restitution, Baumgarte stabilization.
+    Every vector, every impulse, implemented by hand in TypeScript.
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://github.com/erlisgashi67-commits/physics-sandbox">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.1 0 4.6-2.8 5.7-5.5 6 .5.4.9 1 .9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+      View on GitHub
+    </a>
+    <a class="btn btn-ghost" href="blog.html">
+      Read the writeup →
+    </a>
+    <a class="btn btn-ghost" href="#how-it-works">
+      How it works ↓
+    </a>
+  </div>
+  <div class="demo-frame">
+    <img src="demo.gif" alt="Animated demo: a 21-box pyramid forming and settling, then shown with AABB debug overlays" />
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="num">0</div><div class="lbl">Physics libraries</div></div>
+  <div class="stat"><div class="num">SAT</div><div class="lbl">Collision detection</div></div>
+  <div class="stat"><div class="num">60</div><div class="lbl">FPS fixed timestep</div></div>
+  <div class="stat"><div class="num">2</div><div class="lbl">Contacts / manifold</div></div>
+  <div class="stat"><div class="num">MIT</div><div class="lbl">License</div></div>
+</div>
+
+<section>
+  <div class="section-head">
+    <h2>The hard part, done by hand</h2>
+    <p>Anyone can paste the gravity formula. Gluing it into a stable loop where stacks don't jitter or fall through the floor — that's the craft.</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="ico" style="background:rgba(251,191,36,0.12);color:var(--accent)">📐</div>
+      <h3>SAT + Contact Clipping</h3>
+      <p>Polygon-vs-polygon uses the full Separating Axis Theorem with Sutherland-Hodgman clipping, producing up to <code>2</code> contact points per manifold — what makes stacks stable.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:rgba(251,113,133,0.12);color:var(--accent-2)">⚡</div>
+      <h3>Impulse Solver</h3>
+      <p>Sequential impulses with restitution + Coulomb friction cones. <code>N</code> iterations per step converge to a consistent solution for resting stacks.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:rgba(192,132,252,0.12);color:#c084fc">🔗</div>
+      <h3>Joints &amp; Constraints</h3>
+      <p>A full constraint solver with <code>distance</code>, <code>pin</code> (hinge), <code>weld</code>, and <code>motor</code> joints. Warm starting + Baumgarte position correction — the same framework Box2D uses.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:rgba(34,211,238,0.12);color:var(--cyan)">🎯</div>
+      <h3>CCD Substepping</h3>
+      <p>Continuous collision detection substeps fast-moving bodies (up to <code>8×</code>) so projectiles don't tunnel through thin walls. No more "the bullet skipped the floor."</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:rgba(52,211,153,0.12);color:var(--green)">🎮</div>
+      <h3>Interactive Sandbox</h3>
+      <p>Mouse grab &amp; throw, spawn-on-click, right-click delete, live sliders, and 7 presets — including a hanging chain and a motorized spinner.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:rgba(251,191,36,0.12);color:var(--accent)">🏗️</div>
+      <h3>Siege Game</h3>
+      <p>A slingshot demolition game on top of the engine — 3 levels with welded fortresses, hanging chains, and pendulum obstacles. Every feature, working together.</p>
+    </div>
+  </div>
+</section>
+
+<section id="how-it-works" style="border-top:1px solid var(--border)">
+  <div class="section-head">
+    <h2>The simulation pipeline</h2>
+    <p>One fixed step (<code style="font-family:var(--mono);color:var(--cyan)">1/60s</code>), decoupled from the render loop via an accumulator for determinism.</p>
+  </div>
+  <div class="pipeline">
+    <div class="step"><div class="dot">1</div><div class="body"><h4>Integrate forces</h4><p>Gravity + accumulated forces → velocity. <code>angularVelocity += torque × invInertia × dt</code></p></div></div>
+    <div class="step"><div class="dot">2</div><div class="body"><h4>Sync transforms</h4><p>Recompute world vertices, normals, and AABBs from position + angle.</p></div></div>
+    <div class="step"><div class="dot">3</div><div class="body"><h4>Broad phase</h4><p>O(n²) AABB overlap pairs — cheap rejection before the expensive SAT tests.</p></div></div>
+    <div class="step"><div class="dot">4</div><div class="body"><h4>Narrow phase</h4><p>Build manifolds: Circle-Circle, Circle-Polygon (Voronoi), Polygon-Polygon (SAT + clip).</p></div></div>
+    <div class="step"><div class="dot">5</div><div class="body"><h4>Solve</h4><p><code>iterations</code> passes of sequential impulse — normal (restitution) + tangential (friction).</p></div></div>
+    <div class="step"><div class="dot">6</div><div class="body"><h4>Integrate velocity</h4><p>position += velocity × dt, angle += angularVelocity × dt.</p></div></div>
+    <div class="step"><div class="dot">7</div><div class="body"><h4>Position correction</h4><p>Baumgarte stabilization pushes penetrating bodies apart along the contact normal.</p></div></div>
+    <div class="step"><div class="dot">8</div><div class="body"><h4>NaN guard</h4><p>If the solver blew up, freeze that body instead of poisoning the whole world.</p></div></div>
+  </div>
+</section>
+
+<section style="border-top:1px solid var(--border)">
+  <div class="section-head">
+    <h2>The bug that almost shipped</h2>
+    <p>Why end-to-end verification beats "it compiles".</p>
+  </div>
+  <div class="codeblock">
+<span class="c-com">// first pass — looked fine, passed lint, server ran clean</span>
+<span class="c-kw">const</span> <span class="c-fn">negSide</span> = -<span class="c-fn">sidePlaneNormal</span>.<span class="c-fn">dot</span>(wv2);  <span class="c-com">// ← WRONG: should be wv1</span>
+
+<span class="c-com">// symptom: boxes fell through the floor SILENTLY</span>
+<span class="c-com">// body counter still reported them present</span>
+<span class="c-com">// only a browser screenshot revealed an empty canvas</span>
+
+<span class="c-kw">const</span> <span class="c-fn">sideC1</span> = <span class="c-fn">sidePlaneNormal</span>.<span class="c-fn">dot</span>(wv1);  <span class="c-com">// ✓ correct</span>
+<span class="c-kw">if</span> (<span class="c-fn">clip</span>(sidePlaneNormal.<span class="c-fn">neg</span>(), -<span class="c-fn">sideC1</span>, incidentFace) &lt; <span class="c-num">2</span>) <span class="c-kw">return</span>;
+  </div>
+  <p style="text-align:center;color:var(--muted);margin-top:1.5rem;font-size:0.9rem;">
+    The math was public knowledge. The transcription error wasn't.<br>
+    <a href="https://github.com/erlisgashi67-commits/physics-sandbox/blob/main/src/lib/physics/manifold.ts">Read the full implementation →</a>
+  </p>
+</section>
+
+<section style="border-top:1px solid var(--border);text-align:center;">
+  <div class="section-head">
+    <h2>Or just play the game</h2>
+    <p>The engine isn't just a tech demo — there's a demolition game built on top of it.</p>
+  </div>
+  <div class="demo-frame" style="max-width:880px;margin-bottom:1.5rem;">
+    <img src="siege.png" alt="Siege game: a slingshot projectile mid-flight toward a tower of boxes with a glowing green target" />
+  </div>
+  <p style="color:var(--muted);max-width:560px;margin:0 auto 1.5rem;font-size:0.92rem;">
+    <strong style="color:var(--text);">Siege</strong> — drag the slingshot back, release to fire.
+    Knock the glowing targets off their structures to win. Fast projectiles use CCD so they
+    don't tunnel through walls; the structures use welds, pins, distance joints, and a motor.
+    Three levels, scoring, the works.
+  </p>
+  <a class="btn btn-primary" href="https://github.com/erlisgashi67-commits/physics-sandbox">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.1 0 4.6-2.8 5.7-5.5 6 .5.4.9 1 .9 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+    Play it on GitHub
+  </a>
+</section>
+
+<section style="border-top:1px solid var(--border);text-align:center;">
+  <div class="section-head">
+    <h2>Read the story behind it</h2>
+    <p>Building a physics engine from scratch — and the one-character bug that almost shipped.</p>
+  </div>
+  <a class="btn btn-primary" href="blog.html">
+    Building a 2D Physics Engine From Scratch →
+  </a>
+</section>
+
+<section style="border-top:1px solid var(--border);text-align:center;">
+  <div class="section-head">
+    <h2>Run it locally</h2>
+  </div>
+  <div class="codeblock" style="text-align:left;">
+<span class="c-com"># clone &amp; install</span>
+<span class="c-fn">git</span> clone https://github.com/erlisgashi67-commits/physics-sandbox.git
+<span class="c-kw">cd</span> physics-sandbox && <span class="c-fn">bun</span> install
+
+<span class="c-com"># run the dev server</span>
+<span class="c-fn">bun</span> run dev    <span class="c-com"># → http://localhost:3000</span>
+
+<span class="c-com"># lint &amp; type-check (CI runs both)</span>
+<span class="c-fn">bun</span> run lint
+<span class="c-fn">bunx</span> tsc --noEmit
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>Rigid Body Sandbox</strong> · Built with HTML5 Canvas + TypeScript ·
+    <a href="https://github.com/erlisgashi67-commits/physics-sandbox">GitHub</a> ·
+    <a href="https://github.com/erlisgashi67-commits/physics-sandbox/blob/main/LICENSE">MIT License</a>
+  </p>
+  <p style="margin-top:0.5rem;color:#64748b;font-family:var(--mono);font-size:0.78rem;">
+    Every vector, every impulse, by hand.
+  </p>
+</footer>
+
+</body>
+</html>
